@@ -134,11 +134,20 @@ export default function App() {
       expiresAt: Date.now() + 30 * 60 * 1000, // 30 minutes countdown timer
     };
     saveBoard(newBoard);
+    pendo.track("board_created", {
+      board_id: id,
+      board_title: title,
+      expires_at: newBoard.expiresAt,
+    });
     window.location.hash = `#/board/${id}`;
   };
 
   // Navigating to pre-filled Example Retro Board instantly
   const handleViewDemo = () => {
+    pendo.track("demo_board_viewed", {
+      demo_board_id: DEMO_BOARD_ID,
+      demo_card_count: DEMO_CARDS.length,
+    });
     // Expiration date extension happens when accessed
     window.location.hash = `#/board/${DEMO_BOARD_ID}`;
   };
@@ -147,10 +156,23 @@ export default function App() {
     saveUserName(name);
     setUserName(name);
     setIsJoinModalOpen(false);
+    pendo.track("board_joined", {
+      board_id: currentBoardId,
+      is_anonymous: !name || name === 'Anonymous',
+      user_name_length: name.length,
+    });
   };
 
   const handleTimerExpire = () => {
     setIsReadOnly(true);
+    pendo.track("timer_expired", {
+      board_id: currentBoardId,
+      total_cards_count: cards.length,
+      start_cards_count: cards.filter(c => c.column === 'start').length,
+      stop_cards_count: cards.filter(c => c.column === 'stop').length,
+      continue_cards_count: cards.filter(c => c.column === 'continue').length,
+      had_clusters: isClusteredMode,
+    });
   };
 
   const handleAddCard = (text: string, column: 'start' | 'stop' | 'continue', emoji?: string) => {
@@ -171,6 +193,15 @@ export default function App() {
     const updatedCards = [...cards, newCard];
     setCards(updatedCards);
 
+    pendo.track("card_submitted", {
+      board_id: currentBoardId,
+      column: column,
+      has_emoji: !!emoji,
+      emoji: emoji || "",
+      text_length: text.length,
+      total_cards_after: updatedCards.length,
+    });
+
     // If already clustered, we reset clustered state since board changed
     if (isClusteredMode) {
       setIsClusteredMode(false);
@@ -179,11 +210,20 @@ export default function App() {
 
   const handleDeleteCard = (cardId: string) => {
     if (!currentBoardId || isReadOnly) return;
+    const deletedCard = cards.find(c => c.id === cardId);
+    const wasClustered = isClusteredMode;
     deleteCard(currentBoardId, cardId);
     
     // Immediate state refresh
     const updated = cards.filter((c) => c.id !== cardId);
     setCards(updated);
+
+    pendo.track("card_deleted", {
+      board_id: currentBoardId,
+      card_column: deletedCard?.column || "unknown",
+      remaining_cards_count: updated.length,
+      was_clustered: wasClustered,
+    });
 
     // Reset cluster view since content has changed
     if (isClusteredMode) {
@@ -262,9 +302,19 @@ export default function App() {
 
     // Feature requirement: If on example board and has exactly 12 cards, load pre-computed instantly
     if (currentBoardId === DEMO_BOARD_ID && cards.length === DEMO_CARDS.length) {
-      setThemesList(DEMO_CLUSTER_RESULT.themes);
+      const demoThemes = DEMO_CLUSTER_RESULT.themes;
+      setThemesList(demoThemes);
       setIsClusteredMode(true);
       setIsLoadingCluster(false);
+      pendo.track("theme_clustering_completed", {
+        board_id: currentBoardId,
+        card_count: cards.length,
+        themes_count: demoThemes.length,
+        clustering_source: "demo_precomputed",
+        is_demo_board: true,
+        avg_theme_confidence: Math.round(demoThemes.reduce((s, t) => s + t.confidence, 0) / demoThemes.length),
+        total_duplicates_found: demoThemes.reduce((s, t) => s + t.duplicates.length, 0),
+      });
       return;
     }
 
@@ -289,6 +339,15 @@ export default function App() {
       setThemesList(result.themes);
       saveClusterResult(currentBoardId, result);
       setIsClusteredMode(true);
+      pendo.track("theme_clustering_completed", {
+        board_id: currentBoardId,
+        card_count: cards.length,
+        themes_count: result.themes.length,
+        clustering_source: "api",
+        is_demo_board: false,
+        avg_theme_confidence: Math.round(result.themes.reduce((s, t) => s + t.confidence, 0) / (result.themes.length || 1)),
+        total_duplicates_found: result.themes.reduce((s, t) => s + t.duplicates.length, 0),
+      });
     } catch (err: any) {
       console.warn('Backend clustering failed, activating elegant client-side semantic fallback categorizer:', err);
       
@@ -306,6 +365,15 @@ export default function App() {
       };
       saveClusterResult(currentBoardId, mockedResult);
       setIsClusteredMode(true);
+      pendo.track("theme_clustering_completed", {
+        board_id: currentBoardId,
+        card_count: cards.length,
+        themes_count: fallbackThemes.length,
+        clustering_source: "client_fallback",
+        is_demo_board: false,
+        avg_theme_confidence: Math.round(fallbackThemes.reduce((s, t) => s + t.confidence, 0) / (fallbackThemes.length || 1)),
+        total_duplicates_found: fallbackThemes.reduce((s, t) => s + t.duplicates.length, 0),
+      });
     } finally {
       setIsLoadingCluster(false);
     }
@@ -314,6 +382,12 @@ export default function App() {
   const handleResetBoard = () => {
     if (!currentBoardId || isReadOnly) return;
     if (confirm('Are you sure you want to delete all submitted cards and clear themes for this board?')) {
+      pendo.track("board_reset", {
+        board_id: currentBoardId,
+        cards_cleared_count: cards.length,
+        had_clusters: isClusteredMode,
+        themes_cleared_count: themesList.length,
+      });
       // Clear cards
       localStorage.removeItem(`retroboard_cards_${currentBoardId}`);
       localStorage.removeItem(`retroboard_clusters_${currentBoardId}`);
