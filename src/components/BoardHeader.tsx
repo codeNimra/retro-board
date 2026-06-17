@@ -25,6 +25,12 @@ export default function BoardHeader({ board, isReadOnly, onTimerExpire, onGoBack
       await navigator.clipboard.writeText(getShareUrl());
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
+      pendo.track("share_link_copied", {
+        board_id: board.id,
+        is_read_only: isReadOnly,
+        is_example_board: !!board.isExample,
+        board_title: board.title,
+      });
     } catch (err) {
       console.error('Failed to copy text: ', err);
     }

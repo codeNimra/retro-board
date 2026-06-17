@@ -37,6 +37,12 @@ export default function ExportModal({ board, themes, isOpen, onClose }: ExportMo
       await navigator.clipboard.writeText(markdownText);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
+      pendo.track("action_plan_exported_clipboard", {
+        board_id: board.id,
+        board_title: board.title,
+        theme_count: themes.length,
+        content_length: markdownText.length,
+      });
     } catch (err) {
       console.error('Failed to copy to clipboard', err);
     }
@@ -50,11 +56,19 @@ export default function ExportModal({ board, themes, isOpen, onClose }: ExportMo
       link.href = url;
       // Sanitize the title for the filename
       const safeTitle = board.title.toLowerCase().replace(/[^a-z0-9]+/g, '-');
-      link.setAttribute('download', `retro-action-plan-${safeTitle}.md`);
+      const fileName = `retro-action-plan-${safeTitle}.md`;
+      link.setAttribute('download', fileName);
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
+      pendo.track("action_plan_exported_download", {
+        board_id: board.id,
+        board_title: board.title,
+        theme_count: themes.length,
+        file_format: "md",
+        file_name: fileName,
+      });
     } catch (err) {
       console.error('Failed to download markdown file', err);
     }
